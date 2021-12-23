@@ -6,7 +6,7 @@ Provide functions for implicit data collection similar to the regular stub funct
 ```
 func PutState(ctx contractapi.TransactionContextInterface, orgsMsp []string, key string, data []byte) error 
 ```
-PutState stores the private data in the orgs' implicit private collection and corresponding private data key on the public ledger.
+PutState stores the private data in the orgs' implicit private collection and corresponding private data key on the public ledger.<br>
 Note: Transaction must be endorsed by all the orgs passed in the `PutState` function.
 
 ```
