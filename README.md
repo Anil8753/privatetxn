@@ -1,6 +1,11 @@
 # privatetxn
 Provide functions for implicit data collection similar to the regular stub functions for public ledger. <br>
 
+## How to use
+```
+go get github.com/Anil8753/privatetxn
+```
+
 ## Exported functions
 
 ```
