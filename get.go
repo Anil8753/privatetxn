@@ -8,7 +8,7 @@ import (
 
 // GetState fetchs the private data key from the public ledger and retrive the data from the private data collection of the org.
 // At the same time it checks the integrity of the private data by validating the hash of the data with public hash on the ledger.
-func GetState(ctx contractapi.TransactionContextInterface, orgsMsp string, key string) ([]byte, error) {
+func GetState(ctx contractapi.TransactionContextInterface, orgMsp string, key string) ([]byte, error) {
 
 	pvtKeyBytes, err := ctx.GetStub().GetState(key)
 	if err != nil {
