@@ -12,7 +12,7 @@ type PrivateHistoryResult struct {
 
 // GetHistoryForKey gets the history of the key from the public ledger and retrives the private data records from the implicit private the data collection.
 // It validates the private the data records' integrity by comparing the hash of the private data with the hashes available on the ledger.
-func GetHistoryForKey(ctx contractapi.TransactionContextInterface, orgsMsp string, key string) ([]PrivateHistoryResult, error) {
+func GetHistoryForKey(ctx contractapi.TransactionContextInterface, orgMsp string, key string) ([]PrivateHistoryResult, error) {
 
 	itr, err := ctx.GetStub().GetHistoryForKey(key)
 	if err != nil {
