@@ -1,21 +1,55 @@
 package privatetxn
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
-// GetState fetchs the private data key from the public ledger and retrive the data from the private data collection of the org.
-// At the same time it checks the integrity of the private data by validating the hash of the data with public hash on the ledger.
-func GetState(ctx contractapi.TransactionContextInterface, orgMsp string, key string) ([]byte, error) {
+// GetState returns
+// 1. Private data stored in the implicit data collection
+// 2. Public data which is decypted using the secret key.
+//    This secret key is available in the implicit private data collection of the org
+func GetState(
+	ctx contractapi.TransactionContextInterface,
+	key string,
+) ([]byte, *PrivateData, error) {
 
-	pvtKeyBytes, err := ctx.GetStub().GetState(key)
+	clientMSP, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get public state. %w", err)
+		return nil, nil, fmt.Errorf("faled to get the client msp. %w", err)
 	}
 
-	pvtCollectionKey := string(pvtKeyBytes)
+	pvtColelction := getImplicitPrivateCollection(clientMSP)
 
-	return getPrivateData(ctx, orgsMsp, pvtCollectionKey)
+	pvtBytes, err := ctx.GetStub().GetPrivateData(pvtColelction, key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetPrivateData failed. %w", err)
+	}
+
+	if len(pvtBytes) == 0 {
+		return nil, nil, fmt.Errorf("private data not found for key %s", key)
+	}
+
+	var pvtData PrivateData
+	if err := json.Unmarshal(pvtBytes, &pvtBytes); err != nil {
+		return nil, nil, fmt.Errorf("faled to get parse private data. %w", err)
+	}
+
+	pubBytes, err := ctx.GetStub().GetState(key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetPrivateData failed. %w", err)
+	}
+
+	if len(pubBytes) == 0 {
+		return nil, nil, fmt.Errorf("public data not found for key %s", key)
+	}
+
+	outBytes, err := decrypt(pvtData.Secret, pubBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decrypt failed. %w", err)
+	}
+
+	return outBytes, &pvtData, nil
 }

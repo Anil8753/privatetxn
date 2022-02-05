@@ -1,39 +1,46 @@
 package privatetxn
 
 import (
-	"fmt"
+	"encoding/json"
+	"errors"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
-// PutState stores the private data in the orgs' implicit private collection and corresponding private data key on the public ledger.
-func PutState(ctx contractapi.TransactionContextInterface, orgsMsp []string, key string, data []byte) error {
+// PutState saves the data secretly on the ledger.
+// How it works:
+// 1. Encrypts the data using the secret key passed via PrivateData struct
+// 2. Stores the key and encrypted data on public ledger
+// 3. Stores the private data (contains secret key) to the implicit private data collection of participating orgs
+func PutState(
+	ctx contractapi.TransactionContextInterface,
+	key string,
+	value interface{},
+	pvtData *PrivateData,
+) error {
 
-	// normalize the JSON structure keys in sorted order.
-	// Otherwise couchdb will reorder the keys and returns the sorted keys on Get call.
-	// This causes GetPrivateDataHash hash vaidation failure
-	normalizedData, err := jsonRemarshal(data)
-	if err != nil {
-		return fmt.Errorf("failed to JsonRemarshal. %w", err)
+	if pvtData.Secret == "" {
+		return errors.New("secret is missing in PrivateData")
 	}
 
-	dataHash := getHash(normalizedData)
-
-	// This key must be unique in private date collection
-	pvtCollectionKey, err := getPrivateCollectionKey(ctx, dataHash)
+	pvtBytes, err := json.Marshal(value)
 	if err != nil {
-		return fmt.Errorf("failed to private colleection key. %w", err)
+		return err
 	}
 
-	for _, orgMsp := range orgsMsp {
+	outBytes, err := encrypt(pvtData.Secret, pvtBytes)
+	if err != nil {
+		return err
+	}
 
-		if err := putPDC(ctx, orgMsp, pvtCollectionKey, normalizedData); err != nil {
+	if err := ctx.GetStub().PutState(key, outBytes); err != nil {
+		return err
+	}
+
+	for _, mspId := range pvtData.MSPOrgs {
+		if err := ctx.GetStub().PutPrivateData(getImplicitPrivateCollection(mspId), key, pvtBytes); err != nil {
 			return err
 		}
-	}
-
-	if err := ctx.GetStub().PutState(key, []byte(pvtCollectionKey)); err != nil {
-		return fmt.Errorf("failed to save public state. %w", err)
 	}
 
 	return nil

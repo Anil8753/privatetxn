@@ -1,46 +1,76 @@
 package privatetxn
 
 import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/hyperledger/fabric-chaincode-go/shim"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
-type PrivateHistoryResult struct {
-	Timestamp int64
-	TxnId     string
-	Value     string
-}
+// GetHistoryForKey returns the history of a key
+// It gets the encrypted history of a key and decrypts the history
+//  using the secret key stored in the implicit private data colelction of the org
+func GetHistoryForKey(
+	ctx contractapi.TransactionContextInterface,
+	key string,
+) ([][]byte, error) {
 
-// GetHistoryForKey gets the history of the key from the public ledger and retrives the private data records from the implicit private the data collection.
-// It validates the private the data records' integrity by comparing the hash of the private data with the hashes available on the ledger.
-func GetHistoryForKey(ctx contractapi.TransactionContextInterface, orgMsp string, key string) ([]PrivateHistoryResult, error) {
+	clientMSP, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return nil, fmt.Errorf("faled to get the client msp. %w", err)
+	}
+
+	pvtColelction := getImplicitPrivateCollection(clientMSP)
+
+	pvtBytes, err := ctx.GetStub().GetPrivateData(pvtColelction, key)
+	if err != nil {
+		return nil, fmt.Errorf("GetPrivateData failed. %w", err)
+	}
+
+	if len(pvtBytes) == 0 {
+		return nil, fmt.Errorf("private data not found for key %s", key)
+	}
+
+	var pvtData PrivateData
+	if err := json.Unmarshal(pvtBytes, &pvtBytes); err != nil {
+		return nil, fmt.Errorf("failed to get parse private data. %w", err)
+	}
 
 	itr, err := ctx.GetStub().GetHistoryForKey(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetHistoryForKey failed. %w", err)
 	}
 
-	var entries []PrivateHistoryResult
+	results, err := constructSecretHistoryFromIterator(itr, pvtData.Secret)
+	if err != nil {
+		return nil, fmt.Errorf("constructSecretHistoryFromIterator failed. %w", err)
+	}
+
+	return results, nil
+}
+
+// constructSecretHistoryFromIterator constructs a slice of assets from the HistoryQueryIteratorInterface
+func constructSecretHistoryFromIterator(
+	itr shim.HistoryQueryIteratorInterface,
+	secret string,
+) ([][]byte, error) {
+
+	entries := make([][]byte, 0)
 
 	for itr.HasNext() {
-		r, err := itr.Next()
+
+		result, err := itr.Next()
 		if err != nil {
 			return nil, err
 		}
 
-		if r.GetIsDelete() {
-			entry := PrivateHistoryResult{Timestamp: r.Timestamp.GetSeconds(), TxnId: r.TxId, Value: ""}
-			entries = append(entries, entry)
-			continue
-		}
-
-		privateStateKey := string(r.GetValue())
-		dataBytes, err := getPrivateData(ctx, orgsMsp, privateStateKey)
+		entryBytes, err := decrypt(secret, result.Value)
 		if err != nil {
 			return nil, err
 		}
 
-		entry := PrivateHistoryResult{Timestamp: r.Timestamp.GetSeconds(), TxnId: r.TxId, Value: string(dataBytes)}
-		entries = append(entries, entry)
+		entries = append(entries, entryBytes)
 	}
 
 	return entries, nil
